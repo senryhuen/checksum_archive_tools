@@ -49,9 +49,9 @@ def get_checksum_save_location(
     folder = clean_filepath(folder, False)
 
     if nested:
-        orig_save_location = os.path.splitext(folder)[0] + "/.nested_checksum.txt"
+        orig_save_location = folder + "/.nested_checksum.txt"
     else:
-        orig_save_location = os.path.splitext(folder)[0] + f"/.main_checksum.txt"
+        orig_save_location = folder + f"/.main_checksum.txt"
 
     save_location = orig_save_location
     save_location_template = os.path.splitext(save_location)[0] + "_{}.txt"
@@ -124,7 +124,7 @@ def extract_from_md5file(
         raise ValueError(f"format_type: invalid type: '{format_type}'")
 
     # validates md5_filepath arg
-    with open(md5_filepath, "r") as md5_file:
+    with open(md5_filepath, "r", encoding="utf-8") as md5_file:
         md5_lines = md5_file.readlines()
 
     # decide which version of overridden extract_filepath/extract_checksum method to use

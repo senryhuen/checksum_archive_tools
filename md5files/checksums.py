@@ -146,11 +146,12 @@ def nest_checksums(root_folder: str, updating_only: bool):
     for filepath, checksum in zip(filepaths, checksums):
         line_dirpath = os.path.dirname(filepath)
 
+        shortened_formatted_line = (
+            CustomMD5Line.get_short_custom_md5line_string(filepath, checksum) + "\n"
+        )
+
         if line_dirpath not in unique_dirpaths:
             unique_dirpaths.append(line_dirpath)
-            shortened_formatted_line = (
-                CustomMD5Line.get_short_custom_md5line_string(filepath, checksum) + "\n"
-            )
             file_contents.append(
                 [nested_checksum_header + "\n", shortened_formatted_line]
             )

@@ -63,7 +63,7 @@ class MD5Line:
     def validate_md5line(md5_line: str) -> bool:
         """checks that `md5_line` is formatted correctly to be a md5line"""
         ## only checks first part of the string is a md5 checksum, assumes second part is a filepath
-        if re.match("^[A-Fa-f0-9]{32}$", md5_line.split()[0]):
+        if re.match("^[A-Fa-f0-9]{32}$", MD5Line.clean_md5line(md5_line).split()[0]):
             return True
 
         return False
@@ -71,7 +71,7 @@ class MD5Line:
     @staticmethod
     def clean_md5line(md5_line: str) -> str:
         """removes newline character and normalises filepaths (to forward slashes)"""
-        return md5_line.replace("\n", "").replace("\\", "/")
+        return md5_line.replace("\n", "").replace("\\", "/").strip()
 
     @staticmethod
     def extract_checksum(md5_line: str) -> str:

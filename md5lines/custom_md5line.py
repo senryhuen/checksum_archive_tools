@@ -63,7 +63,7 @@ class CustomMD5Line(MD5Line):
     def validate_md5line(md5_line: str) -> bool:
         """checks that `md5_line` is formatted correctly to be a custom_md5line"""
         ## only checks string contains a md5 checksum in the right place
-        if re.match("^[A-Fa-f0-9]{32}$", md5_line.rsplit(" -> ", 1)[1]):
+        if re.match("^[A-Fa-f0-9]{32}$", MD5Line.clean_md5line(md5_line).rsplit(" -> ", 1)[1]):
             return True
 
         return False
