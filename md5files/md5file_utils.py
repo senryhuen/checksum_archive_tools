@@ -6,6 +6,8 @@ Contains the following functions:
     * extract_from_md5file
     * md5
     * revert_md5file_to_teracopy
+    * separate_by_dirs
+    * separate_by_uniqueness
 
 """
 
@@ -13,7 +15,7 @@ import os
 import hashlib
 import unicodedata
 
-from utils import clean_filepath
+from utils import clean_filepath, index_if_possible
 from md5lines import MD5Line, TeracopyMD5Line, CustomMD5Line
 
 
@@ -21,6 +23,8 @@ nested_checksum_header = "; nested_checksum"
 main_checksum_header = "; main_checksum"
 
 accepted_format_types = ["md5", "custom", "custom_nested", "teracopy"]
+
+files_to_ignore = [".DS_Store", ".main_checksum.txt", ".nested_checksum.txt", "main_shipped.txt"]
 
 
 def get_checksum_save_location(
@@ -205,3 +209,92 @@ def revert_md5file_to_teracopy_format(
             write_file.write(
                 TeracopyMD5Line.get_teracopy_md5line_string(filepath, checksum) + "\n"
             )
+
+
+def separate_by_dirs(filepaths: list, checksums: list):
+    """Separates filepaths into arrays based on their parent directory
+
+    Args:
+        filepaths (list): List of filepaths to separate.
+        checksums (list): List of values corresponding to `filepaths`, which
+            will be separated identically. Defaults to None.
+
+    Raises:
+        ValueError: If `filepaths` contain identical filepaths with different
+            checksums
+
+    Returns:
+        tuple[list, list, list]: lists for: [0] unique parent directories,
+            [1] lists of filenames, one for each unique parent directories,
+            [2] their corresponding checksums
+
+    """
+    # paths of parent directories of files in filepaths
+    dirpaths = []
+    # contains an array of filenames/checksums for each path in dirpaths
+    dirpath_filenames = []
+    dirpath_checksums = []
+
+    for filepath, checksum in zip(filepaths, checksums):
+        line_dirpath, filename = os.path.split(filepath)
+
+        x = index_if_possible(dirpaths, line_dirpath)
+        if x == -1:  # new parent directory
+            dirpaths.append(line_dirpath)
+            dirpath_filenames.append([filename])
+            dirpath_checksums.append([checksum])
+        else:  # parent directory already in dirpaths
+            y = index_if_possible(dirpath_filenames, filename)
+            if y == -1:  # new filename in dirpath
+                dirpath_filenames[x].append(filename)
+                dirpath_checksums[x].append(checksum)
+            elif checksum != dirpath_checksums[y]:
+                raise ValueError(
+                    "filepaths: contains identical filepaths with different checksums"
+                )
+
+    return dirpaths, dirpath_filenames, dirpath_checksums
+
+
+def separate_by_uniqueness(filenames: list, checksums: list):
+    """Separates filenames into arrays depending on whether they are unique
+
+    Args:
+        filenames (list): List of filenames to separate.
+        checksums (list): List of values corresponding to `filenames`, which
+            will be separated identically. Defaults to None.
+
+    Returns:
+        tuple[list, list, list, list]: lists for: [0] unique filenames,
+            [1] their corresponding checksums, [2] non-unique filenames,
+            [3] their corresponding checksums
+
+    """
+    unique_filenames, unique_checksums = [], []
+    non_unique_filenames, non_unique_checksums = [], []
+
+    for filename, checksum in zip(filenames, checksums):
+        dupe_idx = index_if_possible(non_unique_filenames, filename)
+
+        if dupe_idx == -1:  # filename is not a duplicate of a non-unique filename
+            idx = index_if_possible(unique_filenames, filename)
+
+            if idx == -1:  # filename is not a duplicate a previously unique filename
+                unique_filenames.append(filename)
+                unique_checksums.append(checksum)
+            else:  # filename is a duplicate of a previously unique filename
+                non_unique_filenames.append(unique_filenames.pop(idx))
+                non_unique_checksums.append(unique_checksums.pop(idx))
+                non_unique_filenames.append(filename)
+                non_unique_checksums.append(checksum)
+
+        else:  # filename is a duplicate of a non-unique filename
+            non_unique_filenames.append(filename)
+            non_unique_checksums.append(checksum)
+
+    return (
+        unique_filenames,
+        unique_checksums,
+        non_unique_filenames,
+        non_unique_checksums,
+    )

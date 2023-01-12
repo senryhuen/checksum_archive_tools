@@ -14,15 +14,26 @@ from tqdm import tqdm
 from natsort import natsorted
 from send2trash import send2trash
 
-from utils import concat_filepaths, append_unique_lines_to_file
+from utils import (
+    concat_filepaths,
+    append_unique_lines_to_file,
+    index_if_possible,
+    make_relative_path,
+)
 from md5lines import CustomMD5Line
 from md5files.md5file_utils import (
     md5,
     get_checksum_save_location,
     extract_from_md5file,
     check_custom_md5file_header,
+    separate_by_dirs,
+    separate_by_uniqueness,
 )
-from md5files.md5file_utils import main_checksum_header, nested_checksum_header
+from md5files.md5file_utils import (
+    main_checksum_header,
+    nested_checksum_header,
+    files_to_ignore,
+)
 
 
 def generate_checksums(
@@ -59,60 +70,163 @@ def generate_checksums(
     """
     save_location = get_checksum_save_location(folder_path, updating_only)
 
-    # checksums will only be generated for files that are not in existing_lines_paths
-    existing_lines_paths = []
-    if os.path.exists(save_location):
-        existing_lines_paths = extract_from_md5file(save_location, "custom")[0]
+    # checksums will only be generated for files not recorded in save_location
+    # dirpaths_group = (dirpaths, dirpath_filenames, dirpath_checksums)
+    dirpaths_group = _get_dirpaths_group(save_location)
 
     # unsorted filenames/checksums will be checked before generating checksums for new files
-    unsorted_filenames, unsorted_checksums = [], []
-    if unsorted_md5_filepath is not None:
-        unsorted_filepaths, unsorted_checksums = extract_from_md5file(
-            unsorted_md5_filepath, unsorted_md5_format
-        )
-        unsorted_filenames = [
-            os.path.basename(filepath) for filepath in unsorted_filepaths
-        ]
+    # unsorted_group = (unsorted_filenames, unsorted_checksums, unsorted_dupe_filenames, unsorted_dupe_checksums)
+    unsorted_group = _get_unsorted_group(unsorted_md5_filepath, unsorted_md5_format)
 
     lines_to_write = [main_checksum_header + "\n"]
+    failed_checksums = []
 
     for root, dirs, files in os.walk(folder_path):
         if not files:
             continue
 
-        # make filepath relative to directory being checksummed
-        root_filtered = unicodedata.normalize(
-            "NFC", root.replace(folder_path, "./").replace("\\", "/").replace("//", "/")
+        root_filtered = make_relative_path(root, os.path.basename(folder_path))
+
+        # get list of filenames that can be skipped in the subdirectory being explored
+        existing_filenames = None
+        dirpaths_idx = index_if_possible(dirpaths_group[0], root_filtered)
+        if dirpaths_idx != -1:
+            existing_filenames = dirpaths_group[1][dirpaths_idx]
+
+        # generate checksums and form lines to write
+        lines_to_write_part, failed_checksums_part = _generate_checksums_subdir(
+            files, root, root_filtered, unsorted_group, existing_filenames
         )
 
-        # nested filenames/checksums will be checked before generating checksums for new files
-        nested_filenames, nested_checksums = [], []
-        if ".nested_checksum.txt" in files:
-            nested_filenames, nested_checksums = extract_from_md5file(
-                concat_filepaths(root, ".nested_checksum.txt"), "custom_nested"
-            )
-
-        for file in tqdm(natsorted(files), leave=False, desc="current folder"):
-            file = unicodedata.normalize("NFC", file)
-            line_path = concat_filepaths(root_filtered, file)
-
-            if file == ".main_checksum.txt" or file == ".nested_checksum.txt" or line_path in existing_lines_paths:
-                continue
-
-            # if possible, get md5 checksum of file from alternative source, else calculate checksum (expensive)
-            if file in nested_filenames:
-                checksum = nested_checksums[nested_filenames.index(file)]
-            elif file in unsorted_filenames:
-                checksum = unsorted_checksums[unsorted_filenames.index(file)]
-            else:
-                tqdm.write(f"checksumming '{file}' - ({root_filtered})")
-                checksum = md5(root + "/" + file)
-
-            # add custom md5 line to lines to write
-            line = CustomMD5Line.get_custom_md5line_string(line_path, checksum) + "\n"
-            lines_to_write.append(line)
+        lines_to_write += lines_to_write_part
+        failed_checksums += failed_checksums_part
 
     append_unique_lines_to_file(save_location, lines_to_write)
+    if failed_checksums:
+        print("FAILED: due to mismatched checksums from unsorted_md5 source")
+    for line in failed_checksums:
+        print(f"    {line}")
+
+
+def _generate_checksums_subdir(
+    files: list,
+    root: str,
+    root_filtered: str,
+    unsorted_group: tuple,
+    existing_filenames: list = None,
+):
+    """Part of / Helper for `generate_checksums()`
+
+    Args:
+        files (list): List of filenames in subdirectory.
+        root (str): Absolute path to subdirectory.
+        root_filtered (str): Relative path to subdirectory from main directory.
+            being checksummed.
+        unsorted_group (tuple[list, list, list, list]): [0] Unique unsorted
+            filenames, [1] their corresponding checksums, [2] non-unique
+            unsorted filenames, [3] their corresponding checksums.
+        existing_filenames (list, optional): Filenames in subdirectory that
+            can be skipped. Defaults to None.
+
+    Returns:
+        tuple[list, list]: [0] lines_to_write from subdirectory in "custom"
+        format, [1] failed_checksums from subdirectory
+
+    """
+    # nested filenames/checksums will be checked before generating checksums for new files
+    nested_filenames, nested_checksums = [], []
+    if ".nested_checksum.txt" in files:
+        nested_filenames, nested_checksums = extract_from_md5file(
+            concat_filepaths(root, ".nested_checksum.txt"), "custom_nested"
+        )
+
+    # unsorted filenames/checksums will be checked before generating checksums for new files
+    (
+        unsorted_filenames,
+        unsorted_checksums,
+        unsorted_dupe_filenames,
+        unsorted_dupe_checksums,
+    ) = unsorted_group
+
+    lines_to_write, failed_checksums = [], []
+
+    for file in tqdm(natsorted(files), leave=False, desc=f"{os.path.basename(root)}"):
+        file = unicodedata.normalize("NFC", file)
+
+        if file in files_to_ignore:
+            continue
+
+        if existing_filenames != None and file in existing_filenames:
+            continue
+
+        # if possible, get md5 checksum of file from alternative source, else calculate checksum (expensive)
+        if file in nested_filenames:
+            checksum = nested_checksums[nested_filenames.index(file)]
+        elif file in unsorted_filenames:
+            checksum = unsorted_checksums[unsorted_filenames.index(file)]
+        elif file in unsorted_dupe_filenames:
+            tqdm.write(f"verifing checksum '{file}' - ({root_filtered})")
+            checksum = md5(root + "/" + file)
+
+            idx = index_if_possible(unsorted_dupe_checksums, checksum)
+            if idx == -1 or unsorted_dupe_filenames[idx] != file:
+                failed_checksums.append(f"'{file}' - ({root_filtered})")
+                tqdm.write(f"failed: verifing checksum '{file}'")
+                continue
+
+            tqdm.write(f"finished verifing checksum '{file}' - ({root_filtered})")
+        else:
+            tqdm.write(f"checksumming '{file}' - ({root_filtered})")
+            checksum = md5(root + "/" + file)
+
+        # add custom md5 line to lines to write
+        line_path = concat_filepaths(root_filtered, file)
+        line = CustomMD5Line.get_custom_md5line_string(line_path, checksum) + "\n"
+        lines_to_write.append(line)
+
+    return lines_to_write, failed_checksums
+
+
+def _get_dirpaths_group(save_location: str):
+    """Part of / Helper for `generate_checksums()`
+
+    If `save_location` does not exist, return tuple of empty arrays
+    Else return dirpaths_group (= dirpaths, dirpath_filenames,
+        dirpath_checksums)
+
+    Returns:
+        tuple[list, list, list]: [0] dirpaths, [1] dirpath_filenames,
+            [2] dirpath_checksums
+
+    """
+    if os.path.exists(save_location):
+        return separate_by_dirs(*extract_from_md5file(save_location, "custom"))
+
+    return [], [], []
+
+
+def _get_unsorted_group(unsorted_md5_filepath: str, unsorted_md5_format: str):
+    """Part of / Helper for `generate_checksums()`
+
+    If `unsorted_md5_filepath` was not specified, return tuple of empty arrays
+    Else return unsorted_group (= unsorted_filenames, unsorted_checksums,
+        unsorted_dupe_filenames, unsorted_dupe_checksums)
+
+    Returns:
+        tuple[list, list, list, list]: [0] unsorted_filenames,
+            [1] unsorted_checksums, [2] unsorted_dupe_filenames,
+            [3] unsorted_dupe_checksums
+
+    """
+    if unsorted_md5_filepath is None:
+        return [], [], [], []
+
+    unsorted_filepaths, unsorted_checksums = extract_from_md5file(
+        unsorted_md5_filepath, unsorted_md5_format
+    )
+    unsorted_filenames = [os.path.basename(file) for file in unsorted_filepaths]
+
+    return separate_by_uniqueness(unsorted_filenames, unsorted_checksums)
 
 
 def nest_checksums(root_folder: str, updating_only: bool):
@@ -273,8 +387,10 @@ def verify_checksums(
             checksum = md5(root + "/" + file)
 
             if (
-                checksum
-                != saved_checksums[checksummed_filepaths.index(relative_filepath)]
+                checksum.upper()
+                != saved_checksums[
+                    checksummed_filepaths.index(relative_filepath)
+                ].upper()
             ):
                 failed.append(relative_filepath)
                 tqdm.write(f"FAILED: '{relative_filepath}'")
