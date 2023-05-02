@@ -107,6 +107,34 @@ function copy_verify {
     comm -23 <(sort $CHECKSUM_COMP) <(sort $TARGET_CHECKSUM) > $DIFF_TXT
 }
 
+function verify_source {
+    SOURCE=$1
+
+    CHECKSUM_COMP="$SOURCE/.copy_verify_src_checksum.txt"
+    TARGET_CHECKSUM="$SOURCE/.copy_verify_target_checksum.txt"
+    DIFF_TXT="$SOURCE/.src_target_checksum_diffs.txt"
+
+    # check that file to write diffs to (between existing and new checksums) does not already exist
+    check_file_exists $DIFF_TXT
+    if [[ $? == 0 ]]
+    then
+        echo "ERROR: '$DIFF_TXT' file already exists, which will cause conflict with generated files"
+        exit 3
+    fi
+    
+    # check file of source checksum exists
+    check_file_exists $CHECKSUM_COMP
+    if [[ $? == 1 ]]
+    then
+        echo "ERROR: '$CHECKSUM_COMP' file not found"
+        exit 3
+    fi
+
+    checksum_target $SOURCE
+
+    comm -23 <(sort $CHECKSUM_COMP) <(sort $TARGET_CHECKSUM) > $DIFF_TXT
+}
+
 # ARGS: directory_path
 # RETURNS: 0-does not exist, 1-exists and is empty, 2-exists and is not empty
 function check_dir_exists {
