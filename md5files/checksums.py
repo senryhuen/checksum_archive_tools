@@ -370,7 +370,7 @@ def verify_checksums(
             checksummed_filepaths = [f"{root_filtered}/{file}" for file in _filenames]
 
         # verify checksum (if possible) of each file in this directory
-        for file in tqdm(natsorted(files), leave=False, desc="current folder"):
+        for file in tqdm(natsorted(files), leave=False, desc=f"{os.path.basename(root)}"):
             file = unicodedata.normalize("NFC", file)
             relative_filepath = f"{root_filtered}/{file}"
 
