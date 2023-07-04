@@ -3,9 +3,12 @@
 Contains the following functions:
     * get_checksum_save_location
     * check_custom_md5file_header
+    * extract_from_md5line
     * extract_from_md5file
     * md5
     * revert_md5file_to_teracopy
+    * find_missing_files
+    * remove_checksums
     * separate_by_dirs
     * separate_by_uniqueness
 
@@ -15,7 +18,12 @@ import os
 import hashlib
 import unicodedata
 
-from utils import clean_filepath, index_if_possible
+from utils import (
+    clean_filepath,
+    index_if_possible,
+    concat_filepaths,
+    append_unique_lines_to_file,
+)
 from md5lines import MD5Line, TeracopyMD5Line, CustomMD5Line
 
 
@@ -24,7 +32,12 @@ main_checksum_header = "; main_checksum"
 
 accepted_format_types = ["md5", "custom", "custom_nested", "teracopy"]
 
-files_to_ignore = [".DS_Store", ".main_checksum.txt", ".nested_checksum.txt", "main_shipped.txt"]
+files_to_ignore = [
+    ".DS_Store",
+    ".main_checksum.txt",
+    ".nested_checksum.txt",
+    "main_shipped.txt",
+]
 
 
 def get_checksum_save_location(
@@ -100,6 +113,42 @@ def check_custom_md5file_header(filepath: str, nested: bool) -> bool:
         return False
 
     return True
+
+
+def extract_from_md5line(md5_line: str, format_type: str = "md5") -> tuple[str, str]:
+    """Gets filepath and checksum from a MD5 checksum line
+
+    Args:
+        md5_line (str): Line in a format from a MD5 checksum file.
+        format_type (str, optional): Format style of `md5_line`. Accepted
+            values: "md5", "custom", "custom_nested", "teracopy". Defaults to
+            "md5".
+
+    Raises:
+        ValueError: Invalid `format_type` (must be one of accepted values)
+
+    Returns:
+        tuple[str, str]: [filepath, checksum] extracted from `md5_line`
+
+    """
+    # validates format_type arg
+    if format_type.lower() not in accepted_format_types:
+        raise ValueError(f"format_type: invalid type: '{format_type}'")
+
+    md5_line = unicodedata.normalize("NFC", md5_line)
+
+    # decide which implementation of extract_filepath/extract_checksum method to use
+    format_type = format_type.lower()
+    if format_type == "md5":
+        return MD5Line.extract_filepath(md5_line), MD5Line.extract_checksum(md5_line)
+    elif format_type == "custom" or format_type == "custom_nested":
+        return CustomMD5Line.extract_filepath(md5_line), CustomMD5Line.extract_checksum(
+            md5_line
+        )
+    elif format_type == "teracopy":
+        return TeracopyMD5Line.extract_filepath(
+            md5_line
+        ), TeracopyMD5Line.extract_checksum(md5_line)
 
 
 def extract_from_md5file(
@@ -209,6 +258,118 @@ def revert_md5file_to_teracopy_format(
             write_file.write(
                 TeracopyMD5Line.get_teracopy_md5line_string(filepath, checksum) + "\n"
             )
+
+
+def finding_missing_files(folder_path: str, md5_filepath: str) -> list:
+    """Finds filepaths in "custom" checksum file that do not exist
+
+    Args:
+        folder_path (str): Path to folder where files in `md5_filepath` were
+            checksummed (checksum filepaths are relative to this folder). This
+            is the location where existence of files will be checked.
+        md5_filepath (str): Path to checksum file in "custom" format.
+
+    Returns:
+        list: list of filepaths that do not exist
+
+    """
+    filepaths, _ = extract_from_md5file(md5_filepath, "custom")
+
+    missing_files = []
+
+    for filepath in filepaths:
+        full_path = concat_filepaths(folder_path, filepath)
+        if not os.path.exists(full_path):
+            missing_files.append(filepath)
+
+    return missing_files
+
+
+def remove_checksums(
+    md5_filepath: str,
+    filepaths: list = None,
+    checksums: list = None,
+    inplace: bool = False,
+    require_confirmation: bool = True,
+) -> tuple[str, list]:
+    """Removes lines from "custom" checksum file
+
+    Either `filepaths` of `checksums` must be specified. If a line's checksum
+    or filepath is in `filepaths` or `checksums`, then it will be removed.
+
+    Args:
+        md5_filepath (str): Path to checksum file in "custom" format.
+        filepaths (list, optional): List of filepaths to remove from checksum
+            file at `md5_filepath`. Defaults to None.
+        checksums (list, optional): List of checksums to remove from checksum
+            file at `md5_filepath`. Defaults to None.
+        inplace (bool, optional): If True, `md5_filepath` will be overwritten,
+            otherwise a new file will be created. Defaults to False.
+        require_confirmation (bool, optional): If True, asks before removing.
+            Defaults to True.
+
+    Raises:
+        ValueError: `md5_filepath` does not contain expected header for
+            "custom" format
+
+    Returns:
+        tuple[str, list]: filepath (str) to checksum file with lines removed,
+            and list of the removed lines
+
+    """
+    if not filepaths and not checksums:
+        raise ValueError("'filepaths' and 'checksums' cannot both be 'None'")
+
+    if filepaths == None:
+        filepaths = []
+    if checksums == None:
+        checksums = []
+
+    # convert to set for faster search
+    filepaths = set(filepaths)
+    checksums = set(checksums)
+
+    # read all lines from md5_filepath
+    with open(md5_filepath, "r") as file:
+        lines = file.readlines()
+
+    # check md5_filepath is in "custom" format
+    try:
+        lines.remove(main_checksum_header + "\n")
+    except ValueError:
+        raise ValueError(
+            f"'{md5_filepath}' does not contain header for format_type 'custom'"
+        )
+
+    # sort lines to keep and lines to remove into two lists
+    lines_to_write = [main_checksum_header + "\n"]
+    removed_lines = []
+
+    for line in lines:
+        filepath, checksum = extract_from_md5line(line, "custom")
+
+        # check whether to remove line
+        if filepath in filepaths or checksum in checksums:
+            removing = ""
+            if not require_confirmation:
+                removing = "y"
+
+            while removing != "y" and removing != "n":
+                removing = input(f"Remove '{line}'? [y/n]: ").lower()
+
+            if removing.lower() == "y":
+                removed_lines.append(line)
+            else:
+                lines_to_write.append(line)
+        else:
+            lines_to_write.append(line)
+
+    # write to file
+    save_path = os.path.split(clean_filepath(md5_filepath))[0]
+    save_location = get_checksum_save_location(save_path, inplace)
+    append_unique_lines_to_file(save_location, lines_to_write)
+
+    return save_location, removed_lines
 
 
 def separate_by_dirs(filepaths: list, checksums: list):
