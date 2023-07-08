@@ -168,8 +168,8 @@ def _generate_checksums_subdir(
             tqdm.write(f"verifing checksum '{file}' - ({root_filtered})")
             checksum = md5(root + "/" + file)
 
-            idx = index_if_possible(unsorted_dupe_checksums, checksum)
-            if idx == -1 or unsorted_dupe_filenames[idx] != file:
+            matching_filenames = [unsorted_dupe_filenames[idx] for idx, x in enumerate(unsorted_dupe_checksums) if x == checksum]
+            if file not in matching_filenames:
                 failed_checksums.append(f"'{file}' - ({root_filtered})")
                 tqdm.write(f"failed: verifing checksum '{file}'")
                 continue
