@@ -82,17 +82,22 @@ def make_relative_path(path: str, root_dir: str) -> str:
         str: `path` modified to be relative from `root_dir`
 
     """
+    path = unicodedata.normalize("NFC", path.replace("\\", "/"))
+
     if root_dir is None:
         return path
 
-    path = "/" + unicodedata.normalize("NFC", path.replace("\\", "/")) + "/"
     root_dir = unicodedata.normalize("NFC", root_dir.replace("\\", "/"))
 
-    if root_dir not in path:
-        return path
-    else:
+    if root_dir in path:
+        path = "/" + path + "/"
         split_path = path.split(f"/{root_dir}/".replace("//", "/"), 1)
-        return f"./{split_path[1][:-1]}"
+        path = f"./{split_path[1][:-1]}"
+
+    if path == "./":
+        path = "."
+
+    return path
 
 
 def concat_filepaths(

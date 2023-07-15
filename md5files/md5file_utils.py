@@ -1,6 +1,7 @@
 """Utilities for MD5 files
 
 Contains the following functions:
+    * is_checksum_filename
     * get_checksum_save_location
     * check_custom_md5file_header
     * extract_from_md5line
@@ -14,7 +15,7 @@ Contains the following functions:
 
 """
 
-import os
+import os, re
 import hashlib
 import unicodedata
 
@@ -26,6 +27,8 @@ from utils import (
 )
 from md5lines import MD5Line, TeracopyMD5Line, CustomMD5Line
 
+nested_checksum_filename = ".nested_checksum.txt"
+main_checksum_filename = ".main_checksum.txt"
 
 nested_checksum_header = "; nested_checksum"
 main_checksum_header = "; main_checksum"
@@ -33,25 +36,27 @@ main_checksum_header = "; main_checksum"
 accepted_format_types = ["md5", "custom", "custom_nested", "teracopy"]
 
 
-def get_files_to_ignore(filepath: str = None) -> list:
-    """Gets list of filenames to ignore when checksumming
+def is_checksum_filename(s: str, checksum_type: str = None) -> bool:
+    """Checks if filename is for a main/nested checksum file
 
     Args:
-        filepath (str, optional): Path to file containing filenames to ignore
-            (one on each new line). Defaults to None.
+        s (str): filename including extension
+        checksum_type (str, optional): Match to checksum filenames of
+            checksum_type. If None, will match to any type. Accepted values:
+            "custom" or "custom_nested". If value not recognised, will default
+            to None. Defaults to None.
 
     Returns:
-        list: list of filenames (including extensions) to ignore when
-            checksumming
+        bool: returns True if `s` is a filename for a checksum file of
+            `checksum_type`, False otherwise
 
     """
-    files_to_ignore = [".main_checksum.txt", ".nested_checksum.txt"]
+    if checksum_type == "custom_nested":
+        return s == nested_checksum_filename
+    elif checksum_type == "custom":
+        return s == main_checksum_filename
 
-    if filepath:
-        with open(filepath, "r") as file:
-            files_to_ignore += file.readlines()
-
-    return files_to_ignore
+    return s == main_checksum_filename or s == nested_checksum_filename
 
 
 def get_checksum_save_location(
@@ -64,9 +69,8 @@ def get_checksum_save_location(
 
     Args:
         folder (str): Path to directory that custom MD5 checksum file is for.
-        updating_only (str): If true, will return path to latest checksum file
-            that already exists if possible. If false, the returned path will
-            be a new one (no existing file).
+        updating_only (str): If true, will return path to checksum file even if
+            it already exists. If false, an existing file would be renamed first.
         nested (bool, optional): If true, the filename will indicate a nested
             file. If false, it will indicate a main checksum file. Defaults to
             False.
@@ -79,26 +83,33 @@ def get_checksum_save_location(
     # folder path must not have trailing slash - remove if necessary
     folder = clean_filepath(folder, False)
 
+    save_location = f"{folder}/{main_checksum_filename}"
     if nested:
-        orig_save_location = folder + "/.nested_checksum.txt"
-    else:
-        orig_save_location = folder + f"/.main_checksum.txt"
+        save_location = f"{folder}/{nested_checksum_filename}"
 
-    save_location = orig_save_location
-    save_location_template = os.path.splitext(save_location)[0] + "_{}.txt"
+    if os.path.exists(save_location):
+        # if save_location exists, check header is correct
+        if not check_custom_md5file_header(save_location, nested):
+            format_type = "custom_nested" if nested else "custom"
+            raise ValueError(
+                f"'{save_location}' does not contain header for format_type '{format_type}'"
+            )
 
-    # iterate count until filename does not exist
-    count = 0
-    while os.path.exists(save_location):
-        count += 1
-        save_location = save_location_template.format(count)
+        # if not updating_only, rename existing file at save_location
+        if not updating_only:
+            save_location_split = os.path.splitext(save_location)
+            old_save_location = f"{save_location_split[0]}_old{save_location_split[1]}"
+            old_save_location_template = (
+                save_location_split[0] + "_old ({})" + save_location_split[1]
+            )
 
-    if updating_only and count != 0:
-        # decrement count to get latest filename that exists
-        if count == 1:
-            save_location = orig_save_location
-        else:
-            save_location = save_location_template.format(count - 1)
+            # iterate count until filename does not exist
+            count = 1
+            while os.path.exists(old_save_location):
+                old_save_location = old_save_location_template.format(count)
+                count += 1
+
+            os.rename(save_location, old_save_location)
 
     return save_location
 

@@ -28,9 +28,11 @@ from md5files.md5file_utils import (
     check_custom_md5file_header,
     separate_by_dirs,
     separate_by_uniqueness,
-    get_files_to_ignore,
+    is_checksum_filename,
 )
 from md5files.md5file_utils import (
+    main_checksum_filename,
+    nested_checksum_filename,
     main_checksum_header,
     nested_checksum_header,
 )
@@ -89,7 +91,9 @@ def generate_checksums(
     unsorted_group = _get_unsorted_group(unsorted_md5_filepath, unsorted_md5_format)
 
     # list of filenames to ignore when checksumming
-    files_to_ignore += get_files_to_ignore(files_to_ignore_filepath)
+    if files_to_ignore_filepath:
+        with open(files_to_ignore_filepath, "r") as file:
+            files_to_ignore += file.readlines()
 
     lines_to_write = [main_checksum_header + "\n"]
     failed_checksums = []
@@ -158,9 +162,9 @@ def _generate_checksums_subdir(
     """
     # nested filenames/checksums will be checked before generating checksums for new files
     nested_filenames, nested_checksums = [], []
-    if ".nested_checksum.txt" in files:
+    if nested_checksum_filename in files:
         nested_filenames, nested_checksums = extract_from_md5file(
-            concat_filepaths(root, ".nested_checksum.txt"), "custom_nested"
+            concat_filepaths(root, nested_checksum_filename), "custom_nested"
         )
 
     # unsorted filenames/checksums will be checked before generating checksums for new files
@@ -176,7 +180,7 @@ def _generate_checksums_subdir(
     for file in tqdm(natsorted(files), leave=False, desc=f"{os.path.basename(root)}"):
         file = unicodedata.normalize("NFC", file)
 
-        if file in files_to_ignore:
+        if file in files_to_ignore or is_checksum_filename(file):
             continue
 
         if existing_filenames != None and file in existing_filenames:
@@ -265,9 +269,8 @@ def nest_checksums(root_folder: str, updating_only: bool):
     short format, which allows a directory to be moved whilst keeping its
     saved checksums intact.
 
-    A nested checksum file is named '.nested_checksum.txt' or
-    '.nested_checksum_X.txt' (where X is a number), and the first line is a
-    header '; nested checksum'.
+    A nested checksum file is named '.nested_checksum.txt' and the first line
+    is a header '; nested checksum'.
 
     Args:
         root_folder (str): Path to folder to create nested checksum files for
@@ -316,9 +319,8 @@ def delete_nested_checksum_files(root_folder: str):
     (which would have their own nested checksum file). Uses custom_md5line
     short format.
 
-    A nested checksum file is named '.nested_checksum.txt' or
-    '.nested_checksum_X.txt' (where X is a number), and the first line is a
-    header '; nested checksum'.
+    A nested checksum file is named '.nested_checksum.txt' and the first line
+    is a header '; nested checksum'.
 
     Args:
         root_folder (str): Path to folder in which all nested checksum files
@@ -329,12 +331,12 @@ def delete_nested_checksum_files(root_folder: str):
     mismatched_headers = []
 
     for root, dirs, files in os.walk(root_folder):
-        for file in files:
-            if file == ".nested_checksum.txt":
-                if check_custom_md5file_header(concat_filepaths(root, file), True):
-                    send2trash(concat_filepaths(root, file))
-                else:  # filename matches, but header does not
-                    mismatched_headers.append(concat_filepaths(root, file))
+        if nested_checksum_filename in files:
+            nested_checksum_filepath = concat_filepaths(root, nested_checksum_filename)
+            if check_custom_md5file_header(nested_checksum_filepath, True):
+                send2trash(nested_checksum_filepath)
+            else:  # filename matches, but header does not
+                mismatched_headers.append(nested_checksum_filepath)
 
 
 def verify_checksums(
@@ -403,7 +405,7 @@ def verify_checksums(
             file = unicodedata.normalize("NFC", file)
             relative_filepath = f"{root_filtered}/{file}"
 
-            if file == ".main_checksum.txt" or file == ".nested_checksum.txt":
+            if is_checksum_filename(file):
                 continue
 
             if (
