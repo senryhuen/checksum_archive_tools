@@ -5,6 +5,7 @@ Contains the following functions:
     * nest_checksums
     * delete_nested_checksum_files
     * verify_checksums
+    * remove_missing_checksums
 
 """
 
@@ -29,6 +30,8 @@ from md5files.md5file_utils import (
     separate_by_dirs,
     separate_by_uniqueness,
     is_checksum_filename,
+    finding_missing_files,
+    remove_checksums,
 )
 from md5files.md5file_utils import (
     main_checksum_filename,
@@ -320,7 +323,8 @@ def delete_nested_checksum_files(root_folder: str):
     short format.
 
     A nested checksum file is named '.nested_checksum.txt' and the first line
-    is a header '; nested checksum'.
+    is a header '; nested checksum'. Old nested checksum files (renamed to
+    '.nested_checksum_old') are not deleted.
 
     Args:
         root_folder (str): Path to folder in which all nested checksum files
@@ -427,3 +431,43 @@ def verify_checksums(
                 tqdm.write(f"FAILED: '{relative_filepath}'")
             else:  # checksums match, file verified
                 passed.append(relative_filepath)
+
+
+def remove_missing_checksums(
+    folder_path: str, save_orig: bool = True, require_confirmation: bool = True
+) -> int:
+    """Removes lines from "custom" checksum file for non-existant filepaths
+
+    Does not also remove missing checksums from nested checksums. To remove
+    from nested checksums, redo them with the updated main checksum file -
+    either by using `delete_nested_checksum_files(folder_path)` followed by
+    `nest_checksums(folder_path)`, or just
+    `nest_checksums(folder_path, updating_only=False)`.
+
+    Args:
+        folder_path (str): Path to folder where files were checksummed
+            (contains ".main_checksum.txt" and checksum filepaths are relative
+            to this folder). This is the location where existence of files
+            will be checked.
+        save_orig (bool, optional): If True, original checksum file will be
+            saved (renamed first), otherwise it will just be overwritten.
+            Defaults to True.
+        require_confirmation (bool, optional): If True, asks before removing.
+            Defaults to True.
+
+    Returns:
+        int: number of lines removed
+
+    """
+    checksum_filepath = get_checksum_save_location(folder_path, True)
+
+    # if no checksum file found, then return 0 (no lines removed)
+    if not os.path.exists(checksum_filepath):
+        return 0
+
+    missing_files = finding_missing_files(folder_path, checksum_filepath)
+    _, removed_lines = remove_checksums(
+        checksum_filepath, missing_files, save_orig, require_confirmation
+    )
+
+    return len(removed_lines)

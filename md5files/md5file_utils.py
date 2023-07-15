@@ -313,7 +313,7 @@ def finding_missing_files(folder_path: str, md5_filepath: str) -> list:
 def remove_checksums(
     md5_filepath: str,
     filepaths: list,
-    inplace: bool = False,
+    save_orig: bool = True,
     require_confirmation: bool = True,
 ) -> tuple[str, list]:
     """Removes lines from "custom" checksum file
@@ -325,8 +325,9 @@ def remove_checksums(
         md5_filepath (str): Path to checksum file in "custom" format.
         filepaths (list): List of filepaths to remove from checksum file at
             `md5_filepath`.
-        inplace (bool, optional): If True, `md5_filepath` will be overwritten,
-            otherwise a new file will be created. Defaults to False.
+        save_orig (bool, optional): If True, original `md5_filepath` will be
+            saved (renamed first), otherwise it will just be overwritten.
+            Defaults to True.
         require_confirmation (bool, optional): If True, asks before removing.
             Defaults to True.
 
@@ -379,7 +380,7 @@ def remove_checksums(
 
     # write to file
     save_path = os.path.split(clean_filepath(md5_filepath))[0]
-    save_location = get_checksum_save_location(save_path, inplace)
+    save_location = get_checksum_save_location(save_path, not save_orig)
     append_unique_lines_to_file(save_location, lines_to_write)
 
     return save_location, removed_lines
