@@ -28,11 +28,11 @@ from md5files.md5file_utils import (
     check_custom_md5file_header,
     separate_by_dirs,
     separate_by_uniqueness,
+    get_files_to_ignore,
 )
 from md5files.md5file_utils import (
     main_checksum_header,
     nested_checksum_header,
-    files_to_ignore,
 )
 
 
@@ -41,6 +41,8 @@ def generate_checksums(
     updating_only: bool,
     unsorted_md5_filepath: str = None,
     unsorted_md5_format: str = "md5",
+    files_to_ignore: list = [],
+    files_to_ignore_filepath: str = None,
 ):
     """Creates MD5 checksum file for a folder
 
@@ -66,6 +68,14 @@ def generate_checksums(
         unsorted_md5_format (str, optional): Format style of
             `unsorted_md5_filepath`. Ignored if `unsorted_md5_filepath` is not
             specified). Defaults to "md5".
+        files_to_ignore (list, optional): List containing filenames (including
+            extensions) to ignore when checksumming. Any file that matches a
+            filename in the list will be skipped and not checksummed. Defaults
+            to [] (empty list).
+        files_to_ignore_filepath (str, optional): Path to file containing
+            filenames (including extensions) to ignore when checksumming. Any
+            file that matches a filename in the file will be skipped and not
+            checksummed. Defaults to None.
 
     """
     save_location = get_checksum_save_location(folder_path, updating_only)
@@ -77,6 +87,9 @@ def generate_checksums(
     # unsorted filenames/checksums will be checked before generating checksums for new files
     # unsorted_group = (unsorted_filenames, unsorted_checksums, unsorted_dupe_filenames, unsorted_dupe_checksums)
     unsorted_group = _get_unsorted_group(unsorted_md5_filepath, unsorted_md5_format)
+
+    # list of filenames to ignore when checksumming
+    files_to_ignore += get_files_to_ignore(files_to_ignore_filepath)
 
     lines_to_write = [main_checksum_header + "\n"]
     failed_checksums = []
@@ -95,7 +108,12 @@ def generate_checksums(
 
         # generate checksums and form lines to write
         lines_to_write_part, failed_checksums_part = _generate_checksums_subdir(
-            files, root, root_filtered, unsorted_group, existing_filenames
+            files,
+            root,
+            root_filtered,
+            unsorted_group,
+            existing_filenames,
+            files_to_ignore,
         )
 
         lines_to_write += lines_to_write_part
@@ -114,6 +132,7 @@ def _generate_checksums_subdir(
     root_filtered: str,
     unsorted_group: tuple,
     existing_filenames: list = None,
+    files_to_ignore: list = [],
 ):
     """Part of / Helper for `generate_checksums()`
 
@@ -127,6 +146,10 @@ def _generate_checksums_subdir(
             unsorted filenames, [3] their corresponding checksums.
         existing_filenames (list, optional): Filenames in subdirectory that
             can be skipped. Defaults to None.
+        files_to_ignore (list, optional): List containing filenames (including
+            extensions) to ignore when checksumming. Any file that matches a
+            filename in the list will be skipped and not checksummed. Defaults
+            to [] (empty list).
 
     Returns:
         tuple[list, list]: [0] lines_to_write from subdirectory in "custom"
@@ -168,7 +191,11 @@ def _generate_checksums_subdir(
             tqdm.write(f"verifing checksum '{file}' - ({root_filtered})")
             checksum = md5(root + "/" + file)
 
-            matching_filenames = [unsorted_dupe_filenames[idx] for idx, x in enumerate(unsorted_dupe_checksums) if x == checksum]
+            matching_filenames = [
+                unsorted_dupe_filenames[idx]
+                for idx, x in enumerate(unsorted_dupe_checksums)
+                if x == checksum
+            ]
             if file not in matching_filenames:
                 failed_checksums.append(f"'{file}' - ({root_filtered})")
                 tqdm.write(f"failed: verifing checksum '{file}'")

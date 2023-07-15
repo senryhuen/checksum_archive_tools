@@ -32,12 +32,26 @@ main_checksum_header = "; main_checksum"
 
 accepted_format_types = ["md5", "custom", "custom_nested", "teracopy"]
 
-files_to_ignore = [
-    ".DS_Store",
-    ".main_checksum.txt",
-    ".nested_checksum.txt",
-    "main_shipped.txt",
-]
+
+def get_files_to_ignore(filepath: str = None) -> list:
+    """Gets list of filenames to ignore when checksumming
+
+    Args:
+        filepath (str, optional): Path to file containing filenames to ignore
+            (one on each new line). Defaults to None.
+
+    Returns:
+        list: list of filenames (including extensions) to ignore when
+            checksumming
+
+    """
+    files_to_ignore = [".main_checksum.txt", ".nested_checksum.txt"]
+
+    if filepath:
+        with open(filepath, "r") as file:
+            files_to_ignore += file.readlines()
+
+    return files_to_ignore
 
 
 def get_checksum_save_location(
