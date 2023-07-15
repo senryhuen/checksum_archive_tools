@@ -287,8 +287,7 @@ def finding_missing_files(folder_path: str, md5_filepath: str) -> list:
 
 def remove_checksums(
     md5_filepath: str,
-    filepaths: list = None,
-    checksums: list = None,
+    filepaths: list,
     inplace: bool = False,
     require_confirmation: bool = True,
 ) -> tuple[str, list]:
@@ -299,10 +298,8 @@ def remove_checksums(
 
     Args:
         md5_filepath (str): Path to checksum file in "custom" format.
-        filepaths (list, optional): List of filepaths to remove from checksum
-            file at `md5_filepath`. Defaults to None.
-        checksums (list, optional): List of checksums to remove from checksum
-            file at `md5_filepath`. Defaults to None.
+        filepaths (list): List of filepaths to remove from checksum file at
+            `md5_filepath`.
         inplace (bool, optional): If True, `md5_filepath` will be overwritten,
             otherwise a new file will be created. Defaults to False.
         require_confirmation (bool, optional): If True, asks before removing.
@@ -317,17 +314,8 @@ def remove_checksums(
             and list of the removed lines
 
     """
-    if not filepaths and not checksums:
-        raise ValueError("'filepaths' and 'checksums' cannot both be 'None'")
-
-    if filepaths == None:
-        filepaths = []
-    if checksums == None:
-        checksums = []
-
     # convert to set for faster search
     filepaths = set(filepaths)
-    checksums = set(checksums)
 
     # read all lines from md5_filepath
     with open(md5_filepath, "r") as file:
@@ -349,7 +337,7 @@ def remove_checksums(
         filepath, checksum = extract_from_md5line(line, "custom")
 
         # check whether to remove line
-        if filepath in filepaths or checksum in checksums:
+        if filepath in filepaths:
             removing = ""
             if not require_confirmation:
                 removing = "y"
