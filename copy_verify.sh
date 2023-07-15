@@ -36,6 +36,7 @@ function checksum_dir {
     
     echo "$(date +'%Y.%m.%d %H:%M:%S') - started checksumming $SOURCE_DIR"
     find . -type f ! -name $CHECKSUM_FILENAME -exec md5 -r '{}' \; > $CHECKSUM_FILENAME
+    echo "$(date +'%Y.%m.%d %H:%M:%S') - finished checksumming $SOURCE_DIR"
     
     cd $OLDPWD
 
