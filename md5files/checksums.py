@@ -353,6 +353,7 @@ def verify_checksums(
     folder_path: str,
     use_nested_checksums: bool = False,
     follow_nested_dirs: bool = True,
+    verbose: bool = True,
 ):
     """Verify integrity of files by comparing to their saved checksums
 
@@ -366,8 +367,17 @@ def verify_checksums(
         follow_nested_dirs (bool, optional): If true, verifies nested
             directories too. Otherwise, only verifies files in the top level
             of directory. Defaults to True.
+        verbose (bool, optional): If true, outputs when there is a new file
+            with no checksum saved and when a file fails verification.
+            Defaults to True.
+
+    Returns:
+        tuple[list, list, list]: lists of files that: [0] passed, [1] failed,
+            [2] have no saved checksum
 
     """
+    passed, failed, new_files = [], [], []
+
     if not use_nested_checksums:
         save_location = get_checksum_save_location(folder_path, True)
 
@@ -375,14 +385,11 @@ def verify_checksums(
             print(
                 "No checksums were found. Use 'generate_checksums()' to calculate and save new checksums."
             )
-            return
+            return passed, failed, new_files
 
         checksummed_filepaths, saved_checksums = extract_from_md5file(
             save_location, "custom"
         )
-
-    # TODO: add option to output passed, failed, new_files
-    passed, failed, new_files = [], [], []
 
     for depth, (root, _, files) in enumerate(os.walk(folder_path)):
         if not follow_nested_dirs and depth > 0:
@@ -422,7 +429,10 @@ def verify_checksums(
                 relative_filepath not in checksummed_filepaths
             ):  # file has no saved checksum, skip
                 new_files.append(relative_filepath)
-                tqdm.write(f"NEW FILE, nothing to check against: '{relative_filepath}'")
+                if verbose:
+                    tqdm.write(
+                        f"NEW FILE, nothing to check against: '{relative_filepath}'"
+                    )
                 continue
 
             checksum = md5(root + "/" + file)
@@ -434,9 +444,12 @@ def verify_checksums(
                 ].upper()
             ):
                 failed.append(relative_filepath)
-                tqdm.write(f"FAILED: '{relative_filepath}'")
+                if verbose:
+                    tqdm.write(f"FAILED: '{relative_filepath}'")
             else:  # checksums match, file verified
                 passed.append(relative_filepath)
+
+    return passed, failed, new_files
 
 
 def remove_missing_checksums(
