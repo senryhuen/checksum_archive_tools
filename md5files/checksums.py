@@ -46,7 +46,7 @@ def generate_checksums(
     updating_only: bool,
     unsorted_md5_filepath: str = None,
     unsorted_md5_format: str = "md5",
-    files_to_ignore: list = [],
+    files_to_ignore: list = None,
     files_to_ignore_filepath: str = None,
 ):
     """Creates MD5 checksum file for a folder
@@ -76,7 +76,7 @@ def generate_checksums(
         files_to_ignore (list, optional): List containing filenames (including
             extensions) to ignore when checksumming. Any file that matches a
             filename in the list will be skipped and not checksummed. Defaults
-            to [] (empty list).
+            to None.
         files_to_ignore_filepath (str, optional): Path to file containing
             filenames (including extensions) to ignore when checksumming. Any
             file that matches a filename in the file will be skipped and not
@@ -94,9 +94,12 @@ def generate_checksums(
     unsorted_group = _get_unsorted_group(unsorted_md5_filepath, unsorted_md5_format)
 
     # list of filenames to ignore when checksumming
+    if not files_to_ignore:
+        files_to_ignore = []
+
     if files_to_ignore_filepath:
         with open(files_to_ignore_filepath, "r") as file:
-            files_to_ignore += file.readlines()
+            files_to_ignore += [line.rstrip() for line in file.readlines()]
 
     lines_to_write = [main_checksum_header + "\n"]
     failed_checksums = []
@@ -139,7 +142,7 @@ def _generate_checksums_subdir(
     root_filtered: str,
     unsorted_group: tuple,
     existing_filenames: list = None,
-    files_to_ignore: list = [],
+    files_to_ignore: list = None,
 ):
     """Part of / Helper for `generate_checksums()`
 
@@ -156,13 +159,17 @@ def _generate_checksums_subdir(
         files_to_ignore (list, optional): List containing filenames (including
             extensions) to ignore when checksumming. Any file that matches a
             filename in the list will be skipped and not checksummed. Defaults
-            to [] (empty list).
+            to None.
 
     Returns:
         tuple[list, list]: [0] lines_to_write from subdirectory in "custom"
         format, [1] failed_checksums from subdirectory
 
     """
+    # list of filenames to ignore when checksumming
+    if not files_to_ignore:
+        files_to_ignore = []
+
     # nested filenames/checksums will be checked before generating checksums for new files
     nested_filenames, nested_checksums = [], []
     if nested_checksum_filename in files:
