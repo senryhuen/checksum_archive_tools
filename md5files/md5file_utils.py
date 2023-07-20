@@ -36,7 +36,9 @@ main_checksum_header = "; main_checksum"
 accepted_format_types = ["md5", "custom", "custom_nested", "teracopy"]
 
 
-def is_checksum_filename(s: str, checksum_type: str = None) -> bool:
+def is_checksum_filename(
+    s: str, checksum_type: str = None, incl_old: bool = False
+) -> bool:
     """Checks if filename is for a main/nested checksum file
 
     Args:
@@ -45,18 +47,34 @@ def is_checksum_filename(s: str, checksum_type: str = None) -> bool:
             checksum_type. If None, will match to any type. Accepted values:
             "custom" or "custom_nested". If value not recognised, will default
             to None. Defaults to None.
+        incl_old (bool, optional): If True, includes matching to checksum
+            filenames that have been replaced/renamed. Defaults to False.
 
     Returns:
         bool: returns True if `s` is a filename for a checksum file of
             `checksum_type`, False otherwise
 
     """
-    if checksum_type == "custom_nested":
-        return s == nested_checksum_filename
-    elif checksum_type == "custom":
-        return s == main_checksum_filename
+    match = False
 
-    return s == main_checksum_filename or s == nested_checksum_filename
+    if checksum_type == "custom_nested":
+        if incl_old:
+            pattern = r"^\.nested_checksum_old( (\d+))?\.txt$"
+            match = re.match(pattern, s)
+
+        return s == nested_checksum_filename or bool(match)
+    elif checksum_type == "custom":
+        if incl_old:
+            pattern = r"^\.main_checksum_old( (\d+))?\.txt$"
+            match = re.match(pattern, s)
+
+        return s == main_checksum_filename or bool(match)
+
+    if incl_old:
+        pattern = r"^\.(main|nested)_checksum_old( (\d+))?\.txt$"
+        match = re.match(pattern, s)
+
+    return s == main_checksum_filename or s == nested_checksum_filename or bool(match)
 
 
 def get_checksum_save_location(
