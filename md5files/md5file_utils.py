@@ -15,7 +15,8 @@ Contains the following functions:
 
 """
 
-import os, re
+import os
+import re
 import hashlib
 import unicodedata
 
@@ -23,15 +24,14 @@ from utils import (
     clean_filepath,
     index_if_possible,
     concat_filepaths,
-    append_unique_lines_to_file,
 )
 from md5lines import MD5Line, TeracopyMD5Line, CustomMD5Line
 
-nested_checksum_filename = ".nested_checksum.txt"
-main_checksum_filename = ".main_checksum.txt"
+NESTED_CHECKSUM_FILENAME = ".nested_checksum.txt"
+MAIN_CHECKSUM_FILENAME = ".main_checksum.txt"
 
-nested_checksum_header = "; nested_checksum"
-main_checksum_header = "; main_checksum"
+NESTED_CHECKSUM_HEADER = "; nested_checksum"
+MAIN_CHECKSUM_HEADER = "; main_checksum"
 
 accepted_format_types = ["md5", "custom", "custom_nested", "teracopy"]
 
@@ -62,19 +62,19 @@ def is_checksum_filename(
             pattern = r"^\.nested_checksum_old( (\d+))?\.txt$"
             match = re.match(pattern, s)
 
-        return s == nested_checksum_filename or bool(match)
+        return s == NESTED_CHECKSUM_FILENAME or bool(match)
     elif checksum_type == "custom":
         if incl_old:
             pattern = r"^\.main_checksum_old( (\d+))?\.txt$"
             match = re.match(pattern, s)
 
-        return s == main_checksum_filename or bool(match)
+        return s == MAIN_CHECKSUM_FILENAME or bool(match)
 
     if incl_old:
         pattern = r"^\.(main|nested)_checksum_old( (\d+))?\.txt$"
         match = re.match(pattern, s)
 
-    return s == main_checksum_filename or s == nested_checksum_filename or bool(match)
+    return s == MAIN_CHECKSUM_FILENAME or s == NESTED_CHECKSUM_FILENAME or bool(match)
 
 
 def get_checksum_save_location(
@@ -101,9 +101,9 @@ def get_checksum_save_location(
     # folder path must not have trailing slash - remove if necessary
     folder = clean_filepath(folder, False)
 
-    save_location = f"{folder}/{main_checksum_filename}"
+    save_location = f"{folder}/{MAIN_CHECKSUM_FILENAME}"
     if nested:
-        save_location = f"{folder}/{nested_checksum_filename}"
+        save_location = f"{folder}/{NESTED_CHECKSUM_FILENAME}"
 
     if os.path.exists(save_location):
         # if save_location exists, check header is correct
@@ -150,7 +150,7 @@ def check_custom_md5file_header(filepath: str, nested: bool) -> bool:
     with open(filepath, "r", encoding="utf-8") as file:
         header = file.readline().replace("\n", "")
 
-    correct_header = nested_checksum_header if nested else main_checksum_header
+    correct_header = NESTED_CHECKSUM_HEADER if nested else MAIN_CHECKSUM_HEADER
 
     if header != correct_header:
         return False
@@ -291,7 +291,7 @@ def revert_md5file_to_teracopy_format(
     """
     filepaths, checksums = extract_from_md5file(path_to_formatted_file, "custom")
 
-    with open(save_filepath, "w+") as write_file:
+    with open(save_filepath, "w+", encoding="utf8") as write_file:
         # write TeraCopy header (most likely not be necessary)
         write_file.write("; MD5 checksums created by TeraCopy\n")
         write_file.write("; teracopy.com\n\n")
@@ -362,23 +362,23 @@ def remove_checksums(
     filepaths = set(filepaths)
 
     # read all lines from md5_filepath
-    with open(md5_filepath, "r") as file:
+    with open(md5_filepath, "r", encoding="utf8") as file:
         lines = file.readlines()
 
     # check md5_filepath is in "custom" format
     try:
-        lines.remove(main_checksum_header + "\n")
-    except ValueError:
+        lines.remove(MAIN_CHECKSUM_HEADER + "\n")
+    except ValueError as exc:
         raise ValueError(
             f"'{md5_filepath}' does not contain header for format_type 'custom'"
-        )
+        ) from exc
 
     # sort lines to keep and lines to remove into two lists
-    lines_to_write = [main_checksum_header + "\n"]
+    lines_to_write = [MAIN_CHECKSUM_HEADER + "\n"]
     removed_lines = []
 
     for line in lines:
-        filepath, checksum = extract_from_md5line(line, "custom")
+        filepath, _ = extract_from_md5line(line, "custom")
 
         # check whether to remove line
         if filepath in filepaths:
@@ -386,7 +386,7 @@ def remove_checksums(
             if not require_confirmation:
                 removing = "y"
 
-            while removing != "y" and removing != "n":
+            while removing not in ["y", "n"]:
                 removing = input(f"Remove '{line}'? [y/n]: ").lower()
 
             if removing.lower() == "y":
@@ -399,7 +399,9 @@ def remove_checksums(
     # write to file
     save_path = os.path.split(clean_filepath(md5_filepath))[0]
     save_location = get_checksum_save_location(save_path, not save_orig)
-    append_unique_lines_to_file(save_location, lines_to_write)
+
+    with open(save_location, "w", encoding="utf8") as file:
+        file.writelines(lines_to_write)
 
     return save_location, removed_lines
 
@@ -431,16 +433,16 @@ def separate_by_dirs(filepaths: list, checksums: list):
     for filepath, checksum in zip(filepaths, checksums):
         line_dirpath, filename = os.path.split(filepath)
 
-        x = index_if_possible(dirpaths, line_dirpath)
-        if x == -1:  # new parent directory
+        idx = index_if_possible(dirpaths, line_dirpath)
+        if idx == -1:  # new parent directory
             dirpaths.append(line_dirpath)
             dirpath_filenames.append([filename])
             dirpath_checksums.append([checksum])
         else:  # parent directory already in dirpaths
             y = index_if_possible(dirpath_filenames, filename)
             if y == -1:  # new filename in dirpath
-                dirpath_filenames[x].append(filename)
-                dirpath_checksums[x].append(checksum)
+                dirpath_filenames[idx].append(filename)
+                dirpath_checksums[idx].append(checksum)
             elif checksum != dirpath_checksums[y]:
                 raise ValueError(
                     "filepaths: contains identical filepaths with different checksums"

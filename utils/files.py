@@ -27,7 +27,7 @@ def get_dir_size(dir_path: str, max_decimals: int = 3) -> float:
     """
     total_filesize_bytes = 0
 
-    for root, dirs, files in os.walk(dir_path):
+    for root, _, files in os.walk(dir_path):
         for file in files:
             total_filesize_bytes += os.path.getsize(root + "/" + file)
 
@@ -158,14 +158,14 @@ def append_unique_lines_to_file(filepath: str, lines: list) -> None:
 
     """
     if not os.path.exists(filepath):
-        with open(filepath, "w+") as file:
+        with open(filepath, "w+", encoding="utf8") as file:
             for line in lines:
                 file.write(line)
     else:
-        with open(filepath, "r") as file:
+        with open(filepath, "r", encoding="utf8") as file:
             existing_lines = file.readlines()
 
-        with open(filepath, "a") as file:
+        with open(filepath, "a", encoding="utf8") as file:
             for line in lines:
                 if line not in existing_lines:
                     file.write(line)

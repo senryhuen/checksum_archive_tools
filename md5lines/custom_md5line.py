@@ -1,4 +1,5 @@
-import os, re
+import os
+import re
 
 import utils
 from md5lines import MD5Line

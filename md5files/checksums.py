@@ -34,10 +34,9 @@ from md5files.md5file_utils import (
     remove_checksums,
 )
 from md5files.md5file_utils import (
-    main_checksum_filename,
-    nested_checksum_filename,
-    main_checksum_header,
-    nested_checksum_header,
+    NESTED_CHECKSUM_FILENAME,
+    MAIN_CHECKSUM_HEADER,
+    NESTED_CHECKSUM_HEADER,
 )
 
 
@@ -98,13 +97,13 @@ def generate_checksums(
         files_to_ignore = []
 
     if files_to_ignore_filepath:
-        with open(files_to_ignore_filepath, "r") as file:
+        with open(files_to_ignore_filepath, "r", encoding="utf8") as file:
             files_to_ignore += [line.rstrip() for line in file.readlines()]
 
-    lines_to_write = [main_checksum_header + "\n"]
+    lines_to_write = [MAIN_CHECKSUM_HEADER + "\n"]
     failed_checksums = []
 
-    for root, dirs, files in os.walk(folder_path):
+    for root, _, files in os.walk(folder_path):
         if not files:
             continue
 
@@ -172,9 +171,9 @@ def _generate_checksums_subdir(
 
     # nested filenames/checksums will be checked before generating checksums for new files
     nested_filenames, nested_checksums = [], []
-    if nested_checksum_filename in files:
+    if NESTED_CHECKSUM_FILENAME in files:
         nested_filenames, nested_checksums = extract_from_md5file(
-            concat_filepaths(root, nested_checksum_filename), "custom_nested"
+            concat_filepaths(root, NESTED_CHECKSUM_FILENAME), "custom_nested"
         )
 
     # unsorted filenames/checksums will be checked before generating checksums for new files
@@ -193,7 +192,7 @@ def _generate_checksums_subdir(
         if file in files_to_ignore or is_checksum_filename(file):
             continue
 
-        if existing_filenames != None and file in existing_filenames:
+        if existing_filenames is not None and file in existing_filenames:
             continue
 
         # if possible, get md5 checksum of file from alternative source, else calculate checksum (expensive)
@@ -307,12 +306,12 @@ def nest_checksums(root_folder: str, updating_only: bool):
         if line_dirpath not in unique_dirpaths:
             unique_dirpaths.append(line_dirpath)
             file_contents.append(
-                [nested_checksum_header + "\n", shortened_formatted_line]
+                [NESTED_CHECKSUM_HEADER + "\n", shortened_formatted_line]
             )
         else:
-            x = unique_dirpaths.index(line_dirpath)
-            if shortened_formatted_line not in file_contents[x]:
-                file_contents[x].append(shortened_formatted_line)
+            idx = unique_dirpaths.index(line_dirpath)
+            if shortened_formatted_line not in file_contents[idx]:
+                file_contents[idx].append(shortened_formatted_line)
 
     for line_dirpath, lines in zip(unique_dirpaths, file_contents):
         filepath = get_checksum_save_location(
@@ -341,9 +340,9 @@ def delete_nested_checksum_files(root_folder: str):
     # TODO: add option to output mismatched_headers
     mismatched_headers = []
 
-    for root, dirs, files in os.walk(root_folder):
-        if nested_checksum_filename in files:
-            nested_checksum_filepath = concat_filepaths(root, nested_checksum_filename)
+    for root, _, files in os.walk(root_folder):
+        if NESTED_CHECKSUM_FILENAME in files:
+            nested_checksum_filepath = concat_filepaths(root, NESTED_CHECKSUM_FILENAME)
             if check_custom_md5file_header(nested_checksum_filepath, True):
                 send2trash(nested_checksum_filepath)
             else:  # filename matches, but header does not
@@ -385,7 +384,7 @@ def verify_checksums(
     # TODO: add option to output passed, failed, new_files
     passed, failed, new_files = [], [], []
 
-    for depth, (root, dirs, files) in enumerate(os.walk(folder_path)):
+    for depth, (root, _, files) in enumerate(os.walk(folder_path)):
         if not follow_nested_dirs and depth > 0:
             break
 
