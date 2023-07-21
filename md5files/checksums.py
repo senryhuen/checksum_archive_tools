@@ -382,9 +382,10 @@ def verify_checksums(
         save_location = get_checksum_save_location(folder_path, True)
 
         if not os.path.exists(save_location):
-            print(
-                "No checksums were found. Use 'generate_checksums()' to calculate and save new checksums."
-            )
+            if verbose:
+                print(
+                    "No checksums were found. Use 'generate_checksums()' to calculate and save new checksums."
+                )
             return passed, failed, new_files
 
         checksummed_filepaths, saved_checksums = extract_from_md5file(
@@ -406,21 +407,29 @@ def verify_checksums(
             # get path to nested checksum file, skip whole dir if it does not exist
             save_location = get_checksum_save_location(root, True, True)
             if not os.path.exists(save_location):
-                print(f"Could not find nested checksum file. Skipping '{root}'")
+                new_files += [
+                    os.path.join(root_filtered, file)
+                    for file in files
+                    if not is_checksum_filename(file)
+                ]
+                if verbose:
+                    print(f"Could not find nested checksum file. Skipping '{root}'")
                 continue
 
             # convert filenames to filepaths relative to folder_path to avoid collisions
             _filenames, saved_checksums = extract_from_md5file(
                 save_location, "custom_nested"
             )
-            checksummed_filepaths = [f"{root_filtered}/{file}" for file in _filenames]
+            checksummed_filepaths = [
+                os.path.join(root_filtered, file) for file in _filenames
+            ]
 
         # verify checksum (if possible) of each file in this directory
         for file in tqdm(
             natsorted(files), leave=False, desc=f"{os.path.basename(root)}"
         ):
             file = unicodedata.normalize("NFC", file)
-            relative_filepath = f"{root_filtered}/{file}"
+            relative_filepath = os.path.join(root_filtered, file)
 
             if is_checksum_filename(file):
                 continue
