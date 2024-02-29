@@ -63,5 +63,3 @@ The 'copy_verify' command will automatically use the file generated from this co
 
 ### Warnings for 'copy_veryify.sh':
 * The filenames: '.src_target_checksum_diffs.txt', '.copy_verify_src_checksum.txt' and '.copy_verify_target_checksum.txt' are reserved
-* If files are added or removed from a directory, checksums will need to be deleted then redone
-    * A manual work-around/alternative is to use 'generate_checksums' in '/md5files/checksums.py' with the old checksum file as the 'unsorted_md5_file', then rename the outputted file to '.src_target_checksum_diffs.txt'
