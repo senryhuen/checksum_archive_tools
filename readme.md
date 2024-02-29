@@ -20,7 +20,7 @@ verify_checksums:
 
 ### In 'utils/other.py':
 get_dir_size:  
-* gets filesize of a directory (all of its contents combined in GiBs
+* gets filesize of a directory (all of its contents combined in GiBs)
 
 concat_filepaths:  
 * concatenate filepaths with absolute paths treated equally
