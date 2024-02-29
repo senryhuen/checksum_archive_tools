@@ -5,7 +5,7 @@
 # exit codes:
 # 1: problem with $SOURCE (1st arg)
 # 2: problem with $TARGET (2nd arg)
-# 3: file exists with the same name as a file that will be generated
+# 3: output file exists and already contains checksums for all existing files
 
 
 # WARNING: will delete .DS_Store files and "._" files
@@ -22,22 +22,40 @@ function checksum_dir {
         return 1
     fi
 
+    cd $SOURCE_DIR
+
+    find . -name ".DS_Store" -type f -delete
+    dot_clean -m ./  # MacOS specific
+
+    FILES=$(find . -type f ! -name $CHECKSUM_FILENAME | sort)
+
     check_file_exists $SOURCE_CHECKSUM_TXT
     if [[ $? == 0 ]]
     then
-        echo "WARNING: skipping since '$CHECKSUM_FILENAME' already exists"
-        return 3
+        NEW_FILES=$(comm -23 <(echo $FILES) <(awk -F'^.{32} ' '{print $2}' $CHECKSUM_FILENAME | sort))
+
+        if [[ -z $NEW_FILES ]]
+        then
+            echo "WARNING: skipping since '$CHECKSUM_FILENAME' already exists and there are no new files"
+            return 3
+        else
+            echo "WARNING: '$CHECKSUM_FILENAME' already exists, new checksums will be appended"
+            FILES=$NEW_FILES
+        fi
     fi
 
-    cd $SOURCE_DIR
-    
-    find . -name ".DS_Store" -type f -delete
-    dot_clean -m ./  # MacOS specific
-    
     echo "$(date +'%Y.%m.%d %H:%M:%S') - started checksumming $SOURCE_DIR"
-    find . -type f ! -name $CHECKSUM_FILENAME -exec md5 -r '{}' \; > $CHECKSUM_FILENAME
+
+    FILES_ARR=("${(@f)$(echo $FILES)}")
+    for file_path in $FILES_ARR
+    do
+        md5 -r "$file_path" >> $CHECKSUM_FILENAME
+    done
+
+    # find . -type f ! -name $CHECKSUM_FILENAME -exec md5 -r '{}' \; > $CHECKSUM_FILENAME
+
     echo "$(date +'%Y.%m.%d %H:%M:%S') - finished checksumming $SOURCE_DIR"
-    
+ 
     cd $OLDPWD
 
     return 0
